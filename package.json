@@ -11,7 +11,9 @@
   "author": "Shirish",
   "type": "commonjs",
   "main": "index.js",
-  "scripts": {},
+  "scripts": {
+     "login":"npx playwright test tests/functional/login.spec.ts --headed"
+  },
   "devDependencies": {
     "@playwright/test": "^1.58.2",
     "@types/node": "^25.5.0"
