@@ -13,3 +13,4 @@ tests-example
 example.*
 *.log
 allure-results
+allure-report/
