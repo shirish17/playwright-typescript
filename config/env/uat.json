@@ -1,0 +1,5 @@
+{
+  "env": "uat",
+  "baseUrl": "https://ctms-uat.siteromentor.com",
+  "tenantName": "CTMS_UAT_TENANT"
+}

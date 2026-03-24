@@ -1,13 +1,17 @@
 import { test, expect } from "@playwright/test";
 import { log } from "../helpers/logger";
+import { envConfig } from "../../config/envLoader";
 
 test("Should login successfully", async ({ page }) => {
-  await page.goto("https://ctms-val.siteromentor.com/", {
+  await page.goto(envConfig.baseUrl, {
     waitUntil: "networkidle",
     timeout: 120_000, //this is dynamic wait, since adfs call sometimes very slow
   });
 
-  await log("info", "Launching VAL environment");
+  await log(
+    "info",
+    `Launching application in ${envConfig.env.toUpperCase()} environment`,
+  );
 
   // Wait for ADFS redirect and Active Directory button
   await page.getByRole("button", { name: "Active Directory" }).click();
@@ -52,14 +56,14 @@ test("Should login successfully", async ({ page }) => {
   await log("info", "Tenant selection page loaded");
 
   // Select tenant by name
-  const tenantName = "VAL51";
+  const tenantName = envConfig.tenantName;
   await page
     .locator(".divWrap")
     .filter({ hasText: tenantName })
     .getByRole("button", { name: "Choose" })
     .click();
 
-  await log("info", `Selected tenant: ${tenantName}`);
+  await log("info", `Selected tenant: ${envConfig.tenantName.toUpperCase()}`);
 
   // Wait for final page load
   await page.waitForLoadState("networkidle");
@@ -74,8 +78,8 @@ test("Should login successfully", async ({ page }) => {
     "Login successful: welcome message is visible on CTMS landing page",
   );
 
-  //Checking URL of landing page after successful login
-  await expect(page).toHaveURL("https://ctms-val.siteromentor.com/ctms");
+  //Checking URL of landing page after successful login  
+  await expect(page).toHaveURL(`${envConfig.baseUrl}/ctms`);
 
   await log("info", "Post-login redirection to CTMS landing page verified");
 });

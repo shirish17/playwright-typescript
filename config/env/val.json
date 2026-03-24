@@ -1,0 +1,5 @@
+{
+  "env": "val",
+  "baseUrl": "https://ctms-val.siteromentor.com",
+  "tenantName": "VAL51"
+}
