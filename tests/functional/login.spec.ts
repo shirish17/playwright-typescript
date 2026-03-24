@@ -1,6 +1,8 @@
 import { test, expect } from "@playwright/test";
 import { log } from "../helpers/logger";
 import { envConfig } from "../../config/envLoader";
+import dotenv from "dotenv";
+dotenv.config();
 
 test("Should login successfully", async ({ page }) => {
   await page.goto(envConfig.baseUrl, {
@@ -23,8 +25,10 @@ test("Should login successfully", async ({ page }) => {
   await expect(userAccountField).toBeVisible({ timeout: 30_000 });
 
   // Fill credentials
-  await userAccountField.fill("Validation13@sitero.com");
-  await page.getByRole("textbox", { name: "Password" }).fill("Welcome@13");
+  await userAccountField.fill(process.env.VALIDATION13_USERNAME!); //!mark needed at end other wise ts throws error
+  await page
+    .getByRole("textbox", { name: "Password" })
+    .fill(process.env.VALIDATION01_PASSWORD!);
 
   await log("info", "Filled login credentials");
   // Small delay to ensure sign in button clickable
@@ -78,7 +82,7 @@ test("Should login successfully", async ({ page }) => {
     "Login successful: welcome message is visible on CTMS landing page",
   );
 
-  //Checking URL of landing page after successful login  
+  //Checking URL of landing page after successful login
   await expect(page).toHaveURL(`${envConfig.baseUrl}/ctms`);
 
   await log("info", "Post-login redirection to CTMS landing page verified");
