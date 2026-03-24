@@ -1,4 +1,5 @@
 import { defineConfig, devices } from "@playwright/test";
+import { TIMEOUT } from "dns";
 import path from "path";
 
 /**
@@ -22,6 +23,10 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   /* Opt out of parallel tests on CI. */
   workers: process.env.CI ? 1 : undefined,
+  timeout: 30_000,
+  expect: {
+    timeout: 10_000,
+  },
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
   reporter: [
     ["html"],
@@ -37,7 +42,6 @@ export default defineConfig({
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: "on-first-retry",
     ignoreHTTPSErrors: true,
-    navigationTimeout: 30_000,
   },
 
   /* Configure projects for major browsers */
