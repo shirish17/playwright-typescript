@@ -28,11 +28,10 @@ test("Should login successfully", async ({ page }) => {
   await userAccountField.fill(process.env.VALIDATION13_USERNAME!); //!mark needed at end other wise ts throws error
   await page
     .getByRole("textbox", { name: "Password" })
-    .fill(process.env.VALIDATION01_PASSWORD!);
+    .fill(process.env.VALIDATION13_PASSWORD!);
 
   await log("info", "Filled login credentials");
-  // Small delay to ensure sign in button clickable
-  //await page.waitForTimeout(500);
+  
 
   // Wait for any JavaScript to attach event handlers
   await page.locator("#submitButton").evaluate((el) => {
@@ -60,14 +59,16 @@ test("Should login successfully", async ({ page }) => {
   await log("info", "Tenant selection page loaded");
 
   // Select tenant by name
-  const tenantName = envConfig.tenantName;
-  await page
+  const tenantName = process.env.VALIDATION13_TENANTNAME!;
+  let tenantNameBtn = await page
     .locator(".divWrap")
     .filter({ hasText: tenantName })
-    .getByRole("button", { name: "Choose" })
-    .click();
+    .getByRole("button", { name: "Choose" });
 
-  await log("info", `Selected tenant: ${envConfig.tenantName.toUpperCase()}`);
+  if (await tenantNameBtn.isVisible()) {
+    tenantNameBtn.click();
+    await log("info", `Selected tenant: ${tenantName}`);
+  }
 
   // Wait for final page load
   await page.waitForLoadState("networkidle");

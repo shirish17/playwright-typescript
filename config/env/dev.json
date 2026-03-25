@@ -1,5 +1,4 @@
 {
   "env": "dev",
-  "baseUrl": "https://ctms-dev.siteromentor.com",
-  "tenantName": "CTMS_DEV_TENANT"
+  "baseUrl": "https://ctms-dev.siteromentor.com"
 }
