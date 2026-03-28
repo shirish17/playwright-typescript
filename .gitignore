@@ -18,5 +18,5 @@ allure-report/
 # Auth session storage
 storageStates/
 
-# Environment-specific auth configs (IMP: contain secrets so never be pushed to git)
+# Environment-specific auth configs (IMP: contain secrets so never be pushed to git on security ground)
 config/env/*.json
