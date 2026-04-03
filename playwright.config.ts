@@ -1,9 +1,13 @@
+import "tsconfig-paths/register";
 import { defineConfig, devices } from "@playwright/test";
-import { TIMEOUT } from "dns";
 import path from "path";
+import { EnvLoader } from "@config/envLoader";
+
 import * as dotenv from "dotenv";
 dotenv.config();
 
+// Load environment configuration at config time
+EnvLoader.loadConfig();
 /**
  * Read environment variables from file.
  * https://github.com/motdotla/dotenv
@@ -22,33 +26,57 @@ export default defineConfig({
   /* Fail the build on CI if you accidentally left test.only in the source code. */
   forbidOnly: !!process.env.CI,
   /* Retry on CI only */
-  retries: process.env.CI ? 2 : 0,
+  //retries: process.env.CI ? 2 : 1, //Enable after design is done
+  retries: 0,
+  workers: 1,
+
   /* Opt out of parallel tests on CI. */
-  workers: process.env.CI ? 1 : undefined,
-  timeout: 30_000,
+  //workers: process.env.CI ? 4 : 6, //Enable after design is done
+  timeout: 120_000,
   expect: {
     timeout: 10_000,
   },
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
   reporter: [
-    ["html"],
+    [
+      "html",
+      {
+        outputFolder: "playwright-report",
+      },
+    ],
     ["list"],
-    ["allure-playwright"], // Generates allure-results/
+    [
+      "allure-playwright",
+      {
+        outputFolder: "allure-results",
+        detail: true,
+        suiteTitle: true,
+      },
+    ], // Generates allure-results/
     [path.resolve("./reporters/allure-organizer.ts")], // Your custom archiver
+    [
+      "json",
+      {
+        outputFile: "test-results.json",
+      },
+    ],
   ],
-  // Global setup for session storage
-  globalSetup: require.resolve("./auth/auth.setup"),
 
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
-    /* Base URL to use in actions like `await page.goto('')`. */
-    // baseURL: 'http://localhost:3000',
-
+    /* Base URL from environment config */
+    baseURL: EnvLoader.getBaseUrl(),
+    headless: false, //IMP: remove once design phase is done
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: "on-first-retry",
     screenshot: "only-on-failure",
-    video: "retain-on-failure",
+    video: "off",
+    //video: "retain-on-failure",
     ignoreHTTPSErrors: true,
+
+    /* Use environment-specific timeouts */
+    navigationTimeout: EnvLoader.getTimeouts().navigation,
+    actionTimeout: EnvLoader.getTimeouts().default,
   },
 
   /* Configure projects for major browsers */

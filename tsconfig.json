@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "strict": true,
+    "esModuleInterop": true,
+
+    "baseUrl": ".",
+    "paths": {
+      "@auth/*": ["auth/*"],
+      "@config/*": ["config/*"],
+      "@data/*": ["data/*"],
+      "@fixtures/*": ["fixtures/*"],
+      "@helpers/*": ["tests/_support/*"],
+      "@pages/*": ["pages/*"],
+      "@resources/*": ["resources/*"],
+      "@reporters/*": ["reporters/*"]      
+    }
+  },
+  "include": [
+    "**/*.ts"
+  ]
+}

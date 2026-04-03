@@ -1,241 +1,306 @@
-import { chromium, FullConfig, Page, expect } from "@playwright/test";
+import { chromium, Page } from "@playwright/test";
 import * as fs from "fs";
 import * as path from "path";
-import { UserCredentials } from "../config/users.config";
-import { envConfig } from "../config/envLoader";
-import { log } from "../tests/helpers/logger";
+import { UserConfig, EnvLoader } from "@config/envLoader";
+
+export interface StorageStateKey {
+  environment: string;
+  username: string;
+  tenant: string;
+}
 
 export class AuthManager {
-  private static lockDir = path.join(__dirname, "storageStates", ".locks");
-  private static maxLockWaitTime = 120000; // 2 minutes
-  private static lockCheckInterval = 500; // Check every 500ms
+  private static rootDir = process.cwd();
 
-  /**
-   * Ensures storage state directory exists
-   */
-  static ensureStorageStateDir(): void {
-    const storageDir = path.join(__dirname, "storageStates");
-    if (!fs.existsSync(storageDir)) {
-      fs.mkdirSync(storageDir, { recursive: true });
-    }
-    if (!fs.existsSync(this.lockDir)) {
-      fs.mkdirSync(this.lockDir, { recursive: true });
-    }
+  private static storageStateDir = path.resolve(
+    AuthManager.rootDir,
+    "auth",
+    "storageStates",
+  );
+
+  private static lockDir = path.join(this.storageStateDir, ".locks");
+
+  private static storageStateTTL = 24 * 60 * 60 * 1000;
+
+  // -------------------------
+  // INIT
+  // -------------------------
+  static init(): void {
+    fs.mkdirSync(this.storageStateDir, { recursive: true });
+    fs.mkdirSync(this.lockDir, { recursive: true });
+
+    ["dev", "val", "uat"].forEach((env) => {
+      fs.mkdirSync(path.join(this.storageStateDir, env), { recursive: true });
+    });
   }
 
-  /**
-   * Acquires an atomic lock for a specific user
-   * Uses filesystem as lock mechanism (works across processes)
-   */
-  private static async acquireLock(userKey: string): Promise<() => void> {
-    const lockFile = path.join(this.lockDir, `${userKey}.lock`);
-    const startTime = Date.now();
+  private static getStorageStatePath(key: StorageStateKey): string {
+    return path.join(
+      this.storageStateDir,
+      key.environment.toLowerCase(),
+      `${key.username.replace(/[^a-zA-Z0-9]/g, "_")}-${key.tenant}.json`,
+    );
+  }
+
+  private static getLockPath(key: StorageStateKey): string {
+    return path.join(
+      this.lockDir,
+      `${key.environment}-${key.username}-${key.tenant}.lock`,
+    );
+  }
+
+  private static async acquireLock(key: StorageStateKey): Promise<() => void> {
+    const lockFile = this.getLockPath(key);
+    const start = Date.now();
 
     while (true) {
       try {
-        // Try to create lock file exclusively (atomic operation)
-        fs.writeFileSync(lockFile, process.pid.toString(), { flag: "wx" });
-
-        // Return release function
-        return () => {
-          try {
-            fs.unlinkSync(lockFile);
-          } catch (e) {
-            // Lock file already deleted, ignore
-          }
-        };
-      } catch (error: any) {
-        // Lock exists, check if it's stale
-        if (error.code === "EEXIST") {
-          const elapsed = Date.now() - startTime;
-
-          if (elapsed > this.maxLockWaitTime) {
-            // Force release stale lock
-            console.warn(`⚠️  Force releasing stale lock for ${userKey}`);
-            try {
-              fs.unlinkSync(lockFile);
-            } catch {}
-            continue;
-          }
-
-          // Wait and retry
-          await new Promise((resolve) =>
-            setTimeout(resolve, this.lockCheckInterval),
-          );
-        } else {
-          throw error;
+        fs.writeFileSync(lockFile, `${process.pid}`, { flag: "wx" });
+        return () => fs.unlinkSync(lockFile);
+      } catch {
+        if (Date.now() - start > 120_000) {
+          throw new Error(`❌ Auth lock timeout for ${key.username}`);
         }
+        await new Promise((r) => setTimeout(r, 500));
       }
     }
   }
 
-  /**
-   * Checks if storage state is valid
-   */
-  static isStorageStateValid(filePath: string): boolean {
+  // -------------------------
+  // STORAGE VALIDATION
+  // -------------------------
+  static isStorageStateFileValid(filePath: string): boolean {
+    if (!fs.existsSync(filePath)) return false;
+
+    const stats = fs.statSync(filePath);
+    if (Date.now() - stats.mtimeMs > this.storageStateTTL) return false;
+
     try {
-      if (!fs.existsSync(filePath)) {
-        return false;
-      }
-
-      const stats = fs.statSync(filePath);
-      const fileAge = Date.now() - stats.mtimeMs;
-      const maxAge = 24 * 60 * 60 * 1000; // 24 hours
-
-      if (fileAge > maxAge) {
-        console.log(`🔄 Storage state expired for ${path.basename(filePath)}`);
-        return false;
-      }
-
-      const content = fs.readFileSync(filePath, "utf-8");
-      const state = JSON.parse(content);
-
-      // Validate structure
-      if (!state.cookies || !Array.isArray(state.cookies)) {
-        return false;
-      }
-
-      // Check if cookies are expired
-      const now = Date.now() / 1000;
-      const hasValidCookies = state.cookies.some((cookie: any) => {
-        return !cookie.expires || cookie.expires > now;
-      });
-
-      return hasValidCookies;
-    } catch (error) {
-      console.error(`❌ Error validating storage state: ${error}`);
+      const state = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+      return Array.isArray(state.cookies) && state.cookies.length > 0;
+    } catch {
       return false;
     }
   }
 
-  /**
-   * Performs login and saves storage state
-   */
-  static async performLogin(
-    user: UserCredentials,
-    config: FullConfig,
-    tenantName?: string,
+  // -------------------------
+  // SESSION SMOKE CHECK
+  // -------------------------
+  private static async isSessionStillAuthenticated(
+    storageStatePath: string,
+  ): Promise<boolean> {
+    const browser = await chromium.launch({ headless: true });
+    const context = await browser.newContext({
+      storageState: storageStatePath,
+      ignoreHTTPSErrors: true,
+    });
+
+    const page = await context.newPage();
+    await page.goto(EnvLoader.getBaseUrl(), { waitUntil: "domcontentloaded" });
+
+    // Session is invalid if redirected to ADFS
+    const onAdfs = page.url().includes("adfs");
+    await context.close();
+    await browser.close();
+
+    return !onAdfs;
+  }
+
+  // -------------------------
+  // TENANT RESOLUTION
+  // Called in TWO places:
+  // 1. During fresh login (getOrCreateStorageState)
+  // 2. During session reuse (authPage fixture in ctmsExecutionContext)
+  // -------------------------
+  static async resolveTenantIfRequired(
+    page: Page,
+    tenant: string,
   ): Promise<void> {
-    const releaseLock = await this.acquireLock(user.envKey);
+    console.log(`🔍 resolveTenantIfRequired called for tenant: ${tenant}`);
+    console.log(`🔍 current URL: ${page.url()}`);
+
+    // ─── PHASE A: Dismiss any blocking overlay/popup first ────────────────────
+    await page
+      .evaluate(() => {
+        const closeIcons = Array.from(
+          document.querySelectorAll(
+            ".overlay .closeIcon, .popup .closeIcon, .overlay .close, .popup .close",
+          ),
+        );
+        closeIcons.forEach((el) => (el as HTMLElement).click());
+      })
+      .catch(() => {});
+
+    // Wait for non-tenant overlays to clear
+    await page
+      .waitForFunction(
+        () => {
+          const overlays = Array.from(document.querySelectorAll(".overlay"));
+          return overlays.every((el) => {
+            if (el.querySelector("button.btn-finish")) return true;
+            const rect = (el as HTMLElement).getBoundingClientRect();
+            const style = window.getComputedStyle(el);
+            return (
+              style.display === "none" ||
+              style.visibility === "hidden" ||
+              rect.height === 0
+            );
+          });
+        },
+        { timeout: 10_000 },
+      )
+      .catch(() => {});
+
+    // ─── PHASE B: Check for tenant chooser popup ──────────────────────────────
+    const tenantOverlay = page.locator(".overlay").filter({
+      has: page.locator("button.btn-finish"),
+    });
+
+    const tenantPopupVisible = await tenantOverlay
+      .waitFor({ state: "visible", timeout: 8_000 })
+      .then(() => true)
+      .catch(() => false);
+
+    console.log(`🔍 tenantPopupVisible: ${tenantPopupVisible}`);
+
+    if (!tenantPopupVisible) {
+      console.log(`✅ No tenant chooser — single tenant or already resolved`);
+      return;
+    }
+
+    // ─── PHASE C: Find and click correct tenant row ───────────────────────────
+    const tenantRow = tenantOverlay
+      .locator("div.divWrap:not(.headerWrap)")
+      .filter({ hasText: tenant });
+
+    const rowCount = await tenantRow.count();
+    console.log(`🔍 tenant rows found: ${rowCount}`);
+
+    if (rowCount !== 1) {
+      throw new Error(
+        `❌ Expected exactly 1 tenant row for '${tenant}', found ${rowCount}`,
+      );
+    }
+
+    const chooseButton = tenantRow.locator("button.btn-finish").first();
 
     try {
-      // Double-check if another process already created it
-      if (this.isStorageStateValid(user.storageStatePath)) {
-        await log("info", `✅ Storage state already exists for ${user.envKey}`);
-        return;
+      await chooseButton.click({ timeout: 5_000 });
+      console.log(`✅ standard click succeeded`);
+    } catch (e) {
+      console.warn(`⚠️ standard click failed — using dispatchEvent: ${e}`);
+      await chooseButton.dispatchEvent("click");
+      console.log(`✅ dispatchEvent fired`);
+    }
+
+    // ─── PHASE D: Wait for overlay to disappear ───────────────────────────────
+    await page
+      .waitForFunction(
+        () => {
+          const overlay = document.querySelector(".overlay");
+          if (!overlay) return true;
+          const rect = (overlay as HTMLElement).getBoundingClientRect();
+          const style = window.getComputedStyle(overlay);
+          return (
+            style.display === "none" ||
+            style.visibility === "hidden" ||
+            rect.height === 0
+          );
+        },
+        { timeout: 10_000 },
+      )
+      .catch(() => {});
+
+    console.log(`✅ tenant resolved — overlay gone`);
+  }
+
+  // -------------------------
+  // LOGIN (AUTHORITATIVE)
+  // ADFS flow — always 3 pages in sequence:
+  // 1. baseUrl → ADFS provider selection
+  // 2. Click Active Directory → username/password form
+  // 3. Submit credentials → redirect back to app
+  // Storage state saved ONLY after confirmed app landing
+  // -------------------------
+  static async getOrCreateStorageState(user: UserConfig): Promise<string> {
+    this.init();
+
+    const key: StorageStateKey = {
+      environment: EnvLoader.getEnvironment(),
+      username: user.username,
+      tenant: user.tenant,
+    };
+
+    const storagePath = this.getStorageStatePath(key);
+    const release = await this.acquireLock(key);
+
+    try {
+      if (this.isStorageStateFileValid(storagePath)) {
+        const stillValid = await this.isSessionStillAuthenticated(storagePath);
+        if (stillValid) {
+          return storagePath;
+        }
+        fs.unlinkSync(storagePath);
       }
 
-      await log("info", `🔐 Performing login for ${user.envKey}...`);
-
-      const browser = await chromium.launch(config.projects[0].use);
-      const context = await browser.newContext();
+      const browser = await chromium.launch({ headless: false });
+      const context = await browser.newContext({ ignoreHTTPSErrors: true });
       const page = await context.newPage();
 
       try {
-        // Navigate to application
-        await page.goto(envConfig.baseUrl, {
-          waitUntil: "networkidle",
-          timeout: 120_000,
+        // ─── Page 1: Navigate to app → ADFS redirect ──────────────────────────
+        await page.goto(EnvLoader.getBaseUrl(), { waitUntil: "networkidle" });
+
+        // ─── Page 2: ADFS provider selection ──────────────────────────────────
+        // Wait for ADFS URL before interacting
+        await page.waitForURL((url) => url.hostname.includes("adfs"), {
+          timeout: 30_000,
         });
+        // DOM confirmed: div.idp[aria-label="Active Directory"] role="button"
+        const adButton = page.locator('div.idp[aria-label="Active Directory"]');
+        await adButton.waitFor({ state: "visible", timeout: 30_000 });
+        await adButton.click();
+        console.log(`✅ Active Directory clicked`);
 
-        // Click Active Directory
-        await page.getByRole("button", { name: "Active Directory" }).click();
-
-        // Fill credentials
-        const userAccountField = page.getByRole("textbox", {
-          name: "User Account",
-        });
-        await userAccountField.waitFor({ state: "visible", timeout: 30000 });
-        await page.waitForLoadState("networkidle");
-
-        await userAccountField.fill(user.username);
+        // ─── Page 3: Username/password form ───────────────────────────────────
+        // DOM confirmed: div#userNameArea input, div#passwordArea input
         await page
-          .getByRole("textbox", { name: "Password" })
-          .fill(user.password);
+          .locator("div#userNameArea input")
+          .waitFor({ state: "visible", timeout: 30_000 });
+        await page.locator("div#userNameArea input").fill(user.username);
+        await page.locator("div#passwordArea input").fill(user.password);
+        console.log(`✅ Credentials filled for: ${user.username}`);
 
-        await page.waitForLoadState("networkidle");
-
-        await page.locator("#submitButton").evaluate((el) => {
-          return new Promise((resolve) => {
-            // Small delay to ensure handlers are attached
-            setTimeout(resolve, 100);
-          });
+        // DOM confirmed: form#loginForm — submit directly
+        // Login.submitLoginRequest() is NOT on window — form.submit() is reliable
+        await page.evaluate(() => {
+          const form = document.getElementById("loginForm") as HTMLFormElement;
+          if (form) form.submit();
         });
+        console.log(`✅ Form submitted`);
 
-        // Click submit and wait for navigation
-        await Promise.all([
-          page.waitForURL(/.*/, { waitUntil: "networkidle", timeout: 30_000 }),
-          page.locator("#submitButton").click(),
-        ]);
-
-        // Wait for tenant selection
-        await page
-          .getByRole("heading", { name: "Choose Account" })
-          .waitFor({ state: "visible", timeout: 30000 });
-
-        // Select tenant if specified, otherwise use first available
-        if (tenantName) {
-          await page
-            .locator(".divWrap")
-            .filter({ hasText: tenantName })
-            .getByRole("button", { name: "Choose" })
-            .click();
-        } else {
-          await page.getByRole("button", { name: "Choose" }).first().click();
-        }
-
-        // Wait for app to load
+        // ─── Wait for redirect back to app ────────────────────────────────────
+        // Storage state MUST only be saved after landing on app domain
+        await page.waitForURL(
+          (url) => url.hostname === new URL(EnvLoader.getBaseUrl()).hostname,
+          { timeout: 60_000 },
+        );
         await page.waitForLoadState("networkidle");
+        console.log(`✅ Redirected to app: ${page.url()}`);
 
-        //Checking the Welcome message on landing page after successful login
-        await expect(page.getByText("Welcome to CTMS Portal")).toBeVisible();
+        // ─── Resolve tenant if required ───────────────────────────────────────
+        await this.resolveTenantIfRequired(page, user.tenant);
 
-        // Save storage state
-        await context.storageState({ path: user.storageStatePath });
-        await log("info", `✅ Storage state saved for ${user.envKey}`);
+        // ─── Save storage state ONLY after app landing + tenant resolved ──────
+        await context.storageState({ path: storagePath });
+        console.log(`✅ Storage state saved: ${storagePath}`);
+        return storagePath;
       } finally {
         await context.close();
         await browser.close();
       }
     } finally {
-      releaseLock();
-    }
-  }
-
-  /**
-   * Gets or creates storage state for a user
-   */
-  static async getOrCreateStorageState(
-    user: UserCredentials,
-    config: FullConfig,
-    tenantName?: string,
-  ): Promise<string> {
-    this.ensureStorageStateDir();
-
-    // Check if valid storage state exists
-    if (this.isStorageStateValid(user.storageStatePath)) {
-      await log("info", `✅ Using cached auth for ${user.envKey}`);
-      return user.storageStatePath;
-    }
-
-    // Perform login with lock
-    await this.performLogin(user, config, tenantName);
-    return user.storageStatePath;
-  }
-
-  /**
-   * Clears all storage states (useful for cleanup)
-   */
-  static clearAllStorageStates(): void {
-    const storageDir = path.join(__dirname, "storageStates");
-    if (fs.existsSync(storageDir)) {
-      const files = fs.readdirSync(storageDir);
-      files.forEach((file) => {
-        if (file.endsWith(".json")) {
-          fs.unlinkSync(path.join(storageDir, file));
-        }
-      });
-      console.log("🧹 Cleared all storage states");
+      release();
     }
   }
 }
