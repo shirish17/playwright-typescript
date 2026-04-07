@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(git -C /c/Shirish/Automation/UIAutomation/TypeScript/playwright-typescript log --oneline -10)"
+      "Bash(git -C /c/Shirish/Automation/UIAutomation/TypeScript/playwright-typescript log --oneline -10)",
+      "Bash(find \"C:/Shirish/Automation/UIAutomation/TypeScript/playwright-typescript/pages/components\" -name \"*.ts\" -exec wc -l {} \\\\;)",
+      "Bash(find \"C:/Shirish/Automation/UIAutomation/TypeScript/playwright-typescript\" -name \".env.example\" -exec cat {} \\\\;)"
     ]
   }
 }
