@@ -12,6 +12,7 @@
 
     "baseUrl": ".",
     "paths": {
+      "@core/*":  ["pages/core/*"],  
       "@auth/*": ["auth/*"],
       "@config/*": ["config/*"],
       "@data/*": ["data/*"],

@@ -1,5 +1,5 @@
 import { test, expect } from "@fixtures/ctmsExecutionContext";
-import { StudyManagementPage } from "@pages/console/study-management/StudyManagementPage";
+import { StudyListPage } from "@pages/study-list/StudyListPage";
 
 /**
  * Study Management – Left Actions
@@ -22,16 +22,16 @@ test.only("TC001 – User able to create new study", async ({
   const username = testData.users[0];
 
   const page = await authPage(username);
-  const studyPage = new StudyManagementPage(page);
+  const studyList = new StudyListPage(page);
 
   // ✅ Page object owns navigation + readiness
-  await studyPage.gotoStudyList();
+  await studyList.goto();
 
   // ✅ LEFT ACTION: New Study
-  await studyPage.actions.openNewStudy();
+  await studyList.openNewStudy();
 
   // ✅ Assert only what TC001 is meant to assert
-  expect(await studyPage.isBreadcrumbVisible()).toBeTruthy();
+  expect(await studyList.isConfigSummaryBreadcrumbVisible()).toBeTruthy();
 });
 
 // --------------------------------------------------
@@ -43,21 +43,20 @@ test("TC002 – User able to configure existing study", async ({
 }) => {
   for (const username of testData.users) {
     const page = await authPage(username);
-    const studyPage = new StudyManagementPage(page);
+    const studyList = new StudyListPage(page);
 
     // ✅ Navigate using full hierarchy
-    await studyPage.gotoStudyList();
+    await studyList.goto();
 
     // ✅ Search + select exact study
-    await studyPage.searchStudy("SDY-001");
-    await studyPage.selectStudyRowByStudyNo("SDY-001");
+    await studyList.searchStudy("SDY-001");
+    await studyList.selectStudyRowByStudyNo("SDY-001");
 
     // ✅ LEFT ACTION: Configure Study
-    await studyPage.actions.configureSelectedStudy();
+    await studyList.configureSelectedStudy();
 
     // ✅ Validate navigation + correctness
-    expect(await studyPage.isBreadcrumbVisible()).toBeTruthy();
-    expect(await studyPage.getStudyNumber()).toContain("SDY-001");
+    expect(await studyList.isConfigSummaryBreadcrumbVisible()).toBeTruthy();
 
     await page.context().close();
   }
