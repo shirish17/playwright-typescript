@@ -1,10 +1,14 @@
 {
   "compilerOptions": {
-    "target": "ES2020",
-    "module": "commonjs",
-    "moduleResolution": "node",
+    "target": "ES2022",
+
+    "module": "Node16",
+    "moduleResolution": "node16",
+
     "strict": true,
     "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
 
     "baseUrl": ".",
     "paths": {
@@ -15,8 +19,11 @@
       "@helpers/*": ["tests/_support/*"],
       "@pages/*": ["pages/*"],
       "@resources/*": ["resources/*"],
-      "@reporters/*": ["reporters/*"]      
-    }
+      "@reporters/*": ["reporters/*"]
+    },
+
+    // Silence forward-looking TS 7.0 deprecation warnings (intentional)
+    "ignoreDeprecations": "6.0"
   },
   "include": [
     "**/*.ts"

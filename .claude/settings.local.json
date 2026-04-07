@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C /c/Shirish/Automation/UIAutomation/TypeScript/playwright-typescript log --oneline -10)"
+    ]
+  }
+}
