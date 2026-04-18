@@ -1,27 +1,19 @@
-import { Page, Locator } from "@playwright/test";
-import { BasePage } from "@core/BasePage";
+import { Page, Locator, expect } from "@playwright/test";
+import { BasePage } from "@core/BasePage.js";
 
 /**
  * StudyListPage
  *
- * Navigation path:
- * hover Console → hover Study Management → click Study Management (studyList)
+ * Navigation strategy (BUSINESS‑CORRECT):
+ * hover Console → direct router click Study List
  *
- * OWNS:
- * - _hoverConsole()
- * - _hoverStudyManagement()
- * - _clickStudyList()
- * - Study List locators
- * - Study List readiness
- * - All Study List actions
+ * RATIONALE:
+ * - Console flyout UI is non‑deterministic and hover‑time based
+ * - We validate navigation correctness, not hover choreography
+ * - Router click is stable, deterministic, and CI‑safe
  *
  * DOM CONFIRMED (CTMS-AUTO-CTX-v1):
- * ul.Console_Buttons_List
- *   li.dropdown_item-3 (no routerlink) → Study Management flyout parent
- *     ul.open-right
- *       li[routerlink="/console/studyList"] ← target (routerlink on li NOT a)
- *
- * Angular *ngIf pattern — JS evaluate required (CTMS-AUTO-CTX-v1)
+ * li[routerlink="/console/studyList"] ← reliable navigation anchor
  */
 export class StudyListPage extends BasePage {
   protected readonly pageName = "StudyListPage";
@@ -30,8 +22,6 @@ export class StudyListPage extends BasePage {
   private readonly studyListBreadcrumb: Locator;
   private readonly actionsPanel: Locator;
 
-  // Visible after New Study / Configure Study
-  // Confirmed from DOM: <span id="StudyConfigurationSummary">
   readonly configSummaryBreadcrumb: Locator;
 
   constructor(page: Page) {
@@ -42,9 +32,9 @@ export class StudyListPage extends BasePage {
       .first();
 
     this.actionsPanel = page
-      .locator("app-sidebar, aside")
-      .filter({ hasText: "Actions" })
-      .first();
+      .locator("app-sidebar")
+      .getByText("Actions", { exact: true })
+      .locator("..");
 
     this.configSummaryBreadcrumb = page.locator(
       "span#StudyConfigurationSummary",
@@ -52,12 +42,12 @@ export class StudyListPage extends BasePage {
   }
 
   // ── Readiness ──────────────────────────────────────────────────────────────
-  // Page is ready when BOTH breadcrumb AND Actions panel are visible
   protected async waitForPageReady(): Promise<void> {
     await this.studyListBreadcrumb.waitFor({
       state: "visible",
       timeout: this.timeouts.navigation,
     });
+
     await this.actionsPanel.waitFor({
       state: "visible",
       timeout: this.timeouts.navigation,
@@ -67,34 +57,40 @@ export class StudyListPage extends BasePage {
   // ── Navigation ─────────────────────────────────────────────────────────────
   async goto(): Promise<void> {
     if (this.isNavigated) return;
+
     await this.waitForOverlayToClear();
+
+    // Console hover is required only to ensure menu DOM exists
     await this._hoverConsole();
-    await this._hoverStudyManagement();
+
+    // ✅ BUSINESS‑CORRECT: router click (no hover dependency)
     await this._clickStudyList();
+
     await this.completeNavigation();
+
+    // Ensure any residual overlay focus is cleared
+    await this.page.mouse.move(0, 0);
+
+    await this.waitForPageReady();
   }
 
   // ── Private navigation steps ───────────────────────────────────────────────
 
   /**
-   * Move mouse to consoleTab — triggers Angular *ngIf to render
-   * ul.Console_Buttons_List into the DOM.
+   * Hover Console to allow Angular to render console menu DOM
    */
   private async _hoverConsole(): Promise<void> {
     const consoleTab = this.page.locator(
       "ul.nav.navbar-nav.pull-right li#consoleTab",
     );
+
     await consoleTab.waitFor({
       state: "visible",
       timeout: this.timeouts.navigation,
     });
-    const box = await consoleTab.boundingBox();
-    if (!box)
-      throw new Error("❌ [StudyListPage] consoleTab bounding box not found");
 
-    await this.page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await consoleTab.hover();
 
-    // Wait for dropdown to attach (*ngIf rendered)
     await this.page.waitForSelector("ul.Console_Buttons_List", {
       state: "attached",
       timeout: 5_000,
@@ -102,71 +98,61 @@ export class StudyListPage extends BasePage {
   }
 
   /**
-   * Force Console dropdown + Study Management flyout visible.
-   * Does NOT click — exposes flyout for _clickStudyList().
-   */
-  private async _hoverStudyManagement(): Promise<void> {
-    await this.page.evaluate(() => {
-      // Force main dropdown visible
-      const dd = document.querySelector(
-        "ul.Console_Buttons_List",
-      ) as HTMLElement;
-      if (!dd) return;
-      dd.style.cssText +=
-        ";display:block!important;visibility:visible!important;opacity:1!important;";
-
-      // Study Management = li.dropdown_item-3 with NO routerlink
-      const sm = Array.from(
-        dd.querySelectorAll(":scope > li.dropdown_item-3"),
-      ).find((el) => !el.hasAttribute("routerlink")) as HTMLElement;
-      if (!sm) return;
-      sm.style.cssText +=
-        ";display:block!important;visibility:visible!important;";
-
-      // Force flyout + all children visible
-      const flyout = sm.querySelector("ul.open-right") as HTMLElement;
-      if (!flyout) return;
-      flyout.style.cssText +=
-        ";display:block!important;visibility:visible!important;opacity:1!important;";
-      flyout.querySelectorAll("li, a").forEach((el) => {
-        (el as HTMLElement).style.cssText +=
-          ";display:block!important;visibility:visible!important;opacity:1!important;";
-      });
-    });
-  }
-
-  /**
-   * Click Study List flyout item via JS evaluate.
-   * routerlink="/console/studyList" confirmed on <li> not <a>.
+   * Deterministic navigation via routerlink.
+   * No dependency on hover timing, flyout animation, or pointer geometry.
    */
   private async _clickStudyList(): Promise<void> {
     const clicked = await this.page.evaluate(() => {
-      const target = document.querySelector(
-        'ul.Console_Buttons_List > li.dropdown_item-3:not([routerlink]) ul.open-right li[routerlink="/console/studyList"]',
-      ) as HTMLElement;
-      if (!target) return false;
-      target.click();
+      const el = document.querySelector(
+        'li[routerlink="/console/studyList"]',
+      ) as HTMLElement | null;
+
+      if (!el) return false;
+      el.click();
       return true;
     });
 
-    if (!clicked)
+    if (!clicked) {
       throw new Error(
-        "❌ [StudyListPage] Study List item not found in Study Management flyout",
+        "❌ [StudyListPage] routerlink=/console/studyList not found",
       );
+    }
   }
 
   // ── Actions ────────────────────────────────────────────────────────────────
-  // All Study List left panel actions owned here.
-  // button.filter pattern — avoids strict mode violation from inner <i title> icon
-  // Confirmed pattern from CTMS-AUTO-CTX-v1
 
   async openNewStudy(): Promise<void> {
-    await this.actionsPanel
-      .locator("button")
-      .filter({ has: this.page.locator('[title="New Study"]') })
-      .click();
-  }
+    // ---- 1. Grid stabilization (CRITICAL) ----
+    // Kendo grid must render at least one row before Actions become usable
+    await this.page.locator("tbody.k-table-tbody tr").first().waitFor({
+      state: "visible",
+      timeout: this.timeouts.navigation,
+    });
 
+    // ---- 2. Locate New Study button structurally ----
+    const newStudyBtn = this.page
+      .locator("app-sidebar")
+      .locator("button")
+      .filter({
+        has: this.page.locator("span", { hasText: "New Study" }),
+      });
+
+    // ---- 3. Ensure button is ready ----
+    await newStudyBtn.waitFor({
+      state: "visible",
+      timeout: this.timeouts.navigation,
+    });
+
+    await expect(newStudyBtn).toBeEnabled({
+      timeout: this.timeouts.navigation,
+    });
+
+    // ---- 4. Scroll inside sidebar (mandatory) ----
+    await newStudyBtn.scrollIntoViewIfNeeded();
+
+    // ---- 5. Click ----
+    await newStudyBtn.click();
+  }
   async configureSelectedStudy(): Promise<void> {
     await this.actionsPanel
       .locator("button")

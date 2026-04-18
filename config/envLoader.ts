@@ -1,5 +1,9 @@
 import * as fs from "fs";
 import * as path from "path";
+import { fileURLToPath } from "url";
+
+const moduleFile = fileURLToPath(import.meta.url);
+const moduleDir = path.dirname(moduleFile);
 
 /**
  * ✅ FINAL UserConfig exposed to the framework
@@ -57,7 +61,7 @@ export class EnvLoader {
       return this.config;
     }
 
-    const configPath = path.join(__dirname, "env", `${env}.json`);
+    const configPath = path.join(moduleDir, "env", `${env}.json`);
     if (!fs.existsSync(configPath)) {
       throw new Error(`❌ Environment configuration not found: ${configPath}`);
     }

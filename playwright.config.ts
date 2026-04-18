@@ -1,7 +1,6 @@
-import "tsconfig-paths/register";
 import { defineConfig, devices } from "@playwright/test";
 import path from "path";
-import { EnvLoader } from "@config/envLoader";
+import { EnvLoader } from "@config/envLoader.js";
 
 import * as dotenv from "dotenv";
 dotenv.config();

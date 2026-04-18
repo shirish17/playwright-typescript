@@ -46,7 +46,7 @@ TEST_ENV=val        # val | uat | dev
 TEST_TAG=regression
 ```
 
-Each env file (`config/env/{env}.json`) holds `baseUrl`, `users` (array with username/password/tenant/role), and `timeouts`.
+Each env file (`config/env/{env}.json`) holds `baseUrl`, `users` (array with username/password/tenant/role/enabled), and `timeout` (navigation/adfs/default ms values). `config/envLoader.ts` is a singleton — it reads the JSON once and caches it for the process lifetime.
 
 Credentials and env files are gitignored — never commit them.
 
@@ -76,7 +76,9 @@ Three fixtures in `fixtures/`, each serving a different need:
 `auth/authManager.ts` handles ADFS login with 24-hour session caching:
 - Storage states saved to `auth/storageStates/{env}/{username}-{tenant}.json`
 - On each test: checks file age → smoke-tests session validity → reuses or re-authenticates
+- Uses file-based locking (120 s timeout) so parallel workers don't race on the same user's state file
 - After login, `resolveTenantIfRequired()` handles the tenant chooser modal (dismiss overlays → click tenant row → click Finish)
+- ADFS form is submitted via `document.getElementById("loginForm").submit()`, not a button click
 
 ### Page Object Model
 
@@ -87,9 +89,16 @@ NavigationBar  →  SubNavigation  →  StudyManagementSubMenu  →  StudyManage
 (top nav)         (Console items)    (flyout: Study List…)      (page actions)
 ```
 
-Each page method waits for its own readiness indicator before returning (breadcrumb visible, etc.). Methods are idempotent via a `navigated` guard flag.
+All pages extend `BasePage` (`pages/core/BasePage.ts`). Every subclass **must** implement:
+- `pageName: string` — used in logs
+- `waitForPageReady(): Promise<void>` — page-specific readiness signal (e.g. breadcrumb visible)
+- `goto(): Promise<void>` — must open with `if (this.isNavigated) return;` and close with `await this.completeNavigation()`
+
+`BasePage` provides `waitForOverlayToClear()`, timeout config, and the `isNavigated` idempotency guard.
 
 **Angular dropdown workaround** (`StudyManagementSubMenu`): Angular's `*ngIf` menus don't reliably open via Playwright hover. Solution: move mouse to tab → wait for DOM attach → force CSS visibility via `page.evaluate()` → click via JS.
+
+**Angular overlay pattern**: Angular hides overlays via CSS transitions (display/visibility), not DOM removal. Never use `waitFor({ state: "detached" })` for overlays. Always use `waitForFunction()` with computed style checks, as `waitForOverlayToClear()` does.
 
 **Locator scoping**: always scope to the nearest container before filtering — never use page-level locators for elements that repeat in the DOM.
 
@@ -97,8 +106,17 @@ Each page method waits for its own readiness indicator before returning (breadcr
 
 ```
 @auth/*      @config/*      @data/*       @fixtures/*
-@helpers/*   @pages/*       @resources/*  @reporters/*
+@helpers/*   @pages/*       @core/*       @resources/*  @reporters/*
 ```
+
+`@core/*` maps to `pages/core/*`. All imports must use the `.js` extension (Node16 module resolution), e.g. `import { Foo } from "@pages/foo/Foo.js"`.
+
+### Playwright Config Notes
+
+- `workers: 1` — tests run sequentially despite `fullyParallel: true`
+- `headless: false` — browser is visible by default (change for CI)
+- `retries: 0` — no automatic retries
+- Only Chromium is enabled
 
 ### Reporting
 

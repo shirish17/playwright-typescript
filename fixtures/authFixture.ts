@@ -2,8 +2,8 @@
 import { test as base, Page } from "@playwright/test";
 
 // Infrastructure dependencies
-import { EnvLoader } from "@config/envLoader";
-import { AuthManager } from "@auth/authManager";
+import { EnvLoader } from "@config/envLoader.js";
+import { AuthManager } from "@auth/authManager.js";
 
 // ===============================
 // Fixture Types

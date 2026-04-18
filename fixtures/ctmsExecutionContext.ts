@@ -1,7 +1,7 @@
 import { test as base, Page } from "@playwright/test";
-import { DataLoader, TestScenarioRow } from "@data/dataLoader";
-import { EnvLoader } from "@config/envLoader";
-import { AuthManager } from "@auth/authManager";
+import { DataLoader, TestScenarioRow } from "@data/dataLoader.js";
+import { EnvLoader } from "@config/envLoader.js";
+import { AuthManager } from "@auth/authManager.js";
 
 export type TestData = {
   raw: TestScenarioRow;

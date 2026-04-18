@@ -1,11 +1,11 @@
 import { Page } from "@playwright/test";
-import { EnvLoader } from "@config/envLoader";
+import { EnvLoader } from "@config/envLoader.js";
 
 /**
  * BasePage — Universal framework contract.
  *
  * LOCATION: pages/core/BasePage.ts
- * IMPORT:   import { BasePage } from "@core/BasePage"
+ * IMPORT:   import { BasePage } from "@core/BasePage.js"
  *
  * OWNS:
  * - Navigated guard (idempotent goto)
@@ -35,14 +35,14 @@ export abstract class BasePage {
   constructor(protected readonly page: Page) {}
 
   // ── Navigated guard ───────────────────────────────────────────────────────
-  private _navigated = false;
+  private navigated = false;
 
   protected get isNavigated(): boolean {
-    return this._navigated;
+    return this.navigated;
   }
 
   protected markNavigated(): void {
-    this._navigated = true;
+    this.navigated = true;
   }
 
   /**
@@ -51,7 +51,7 @@ export abstract class BasePage {
    * Never call from within page objects.
    */
   resetNavigation(): void {
-    this._navigated = false;
+    this.navigated = false;
   }
 
   // ── Environment-driven timeouts ───────────────────────────────────────────

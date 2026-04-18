@@ -1,5 +1,5 @@
 import { Page, Locator } from "@playwright/test";
-import { BasePage } from "@core/BasePage";
+import { BasePage } from "@core/BasePage.js";
 
 /**
  * StudyManagementPage

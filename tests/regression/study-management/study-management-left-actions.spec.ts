@@ -1,5 +1,5 @@
-import { test, expect } from "@fixtures/ctmsExecutionContext";
-import { StudyListPage } from "@pages/study-list/StudyListPage";
+import { test, expect } from "@fixtures/ctmsExecutionContext.js";
+import { StudyListPage } from "@pages/study-list/StudyListPage.js";
 
 /**
  * Study Management – Left Actions

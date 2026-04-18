@@ -2,6 +2,11 @@ import * as fs from "fs";
 import * as path from "path";
 import { parse } from "csv-parse/sync";
 
+import { fileURLToPath } from "url";
+
+const moduleFile = fileURLToPath(import.meta.url);
+const moduleDir = path.dirname(moduleFile);
+
 /**
  * One CSV row = one execution instance.
  * Pure data only.
@@ -53,7 +58,7 @@ export class DataLoader {
       return this.scenarioCache.get(scenarioFile)!;
     }
 
-    const filePath = path.join(__dirname, "scenarios", scenarioFile);
+    const filePath = path.join(moduleDir, "scenarios", scenarioFile);
 
     if (!fs.existsSync(filePath)) {
       throw new Error(`❌ Scenario file not found: ${filePath}`);

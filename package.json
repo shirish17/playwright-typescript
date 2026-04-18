@@ -9,7 +9,7 @@
   ],
   "license": "ISC",
   "author": "Shirish",
-  "type": "commonjs",
+  "type": "module",
   "main": "index.js",
   "scripts": {
     "login": "npx playwright test tests/functional/login.spec.ts --headed",
@@ -23,6 +23,8 @@
     "chalk": "^5.6.2",
     "csv-parse": "^6.2.1",
     "dotenv": "^17.3.1",
-    "tsconfig-paths": "^4.2.0"
+    "tsconfig-paths": "^4.2.0",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.2"
   }
 }

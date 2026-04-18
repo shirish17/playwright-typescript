@@ -1,7 +1,7 @@
 import { chromium, Page } from "@playwright/test";
 import * as fs from "fs";
 import * as path from "path";
-import { UserConfig, EnvLoader } from "@config/envLoader";
+import { UserConfig, EnvLoader } from "@config/envLoader.js";
 
 export interface StorageStateKey {
   environment: string;

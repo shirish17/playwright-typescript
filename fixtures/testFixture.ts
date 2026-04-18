@@ -3,7 +3,7 @@
 // ===============================
 
 import { test as base } from "@playwright/test";
-import { DataLoader, TestScenarioRow } from "@data/dataLoader";
+import { DataLoader, TestScenarioRow } from "@data/dataLoader.js";
 
 // ===============================
 // Types
